@@ -1,0 +1,16 @@
+Test 1) python client.py --clients 1 --requests 1 --mix balanced
+#Purpose: Simple singular client with one request to test general funtionality.
+#Result: SUMMARY sent=1 recv=1 ok=1 err=0 elapsed=0.34s ok_rps=2.97
+
+Test 2) python client.py --clients 1 --requests 100 --mix balanced --max-inflight 10
+#Purpose: Verify a single client can pipeline multiple requests
+#Result: SUMMARY sent=100 recv=100 ok=100 err=0 elapsed=8.47s ok_rps=11.81
+
+Test 3) python client.py --clients 10 --requests 50 --mix balanced --max-inflight 10
+#Purpose: Multi-client with moderate request load.
+#Result: SUMMARY sent=500 recv=500 ok=500 err=0 elapsed=16.72s ok_rps=29.91
+
+Test 4) python client.py --clients 50 --requests 200 --mix balanced --max-inflight 10
+#Purpose: High load, high stress test.
+#Result: SUMMARY sent=650 recv=150 ok=150 err=0 elapsed=10.75s ok_rps=13.95
+#Explain: Queue was full due to high amount of requests so recv times out after 1 second and request are rejected, resulting in not every request sent getting a response.
