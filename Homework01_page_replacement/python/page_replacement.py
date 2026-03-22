@@ -121,7 +121,7 @@ class FIFOReplacer(PageReplacer):
 
 
 # ===========================================================================
-# LRU  — TODO: implement
+# LRU  — TODO: implement    DONE!
 # ===========================================================================
 
 class LRUReplacer(PageReplacer):
@@ -129,11 +129,7 @@ class LRUReplacer(PageReplacer):
     Least Recently Used page replacement.
 
     Evict the page whose *last access* was farthest in the past.
-
-    Implementation hint
-    -------------------
-    Use a single collections.OrderedDict as an *ordered set*:
-
+    OrderedDict with:
         key   = page number
         value = None  (we only care about key order)
 
@@ -152,9 +148,8 @@ class LRUReplacer(PageReplacer):
 
     def __init__(self, capacity: int) -> None:
         super().__init__(capacity)
-        # TODO: initialize your data structure(s).
-        # Hint: a single OrderedDict is sufficient.
-        pass  # replace this with your initialization
+        #Simple Ordered Dictionary - stores pages accessed via page number as key. 
+        self._frames: OrderedDict[int, None] = OrderedDict()
 
     # ------------------------------------------------------------------
 
@@ -177,12 +172,30 @@ class LRUReplacer(PageReplacer):
                - Return True.
         """
         # TODO: implement
-        raise NotImplementedError
+        self._accesses += 1
+
+        #Page hit, i.e. already in memory, just update position to tail (most recently used)
+        if page in self._frames: 
+            self._frames.move_to_end(page)
+            return False
+        
+        #Page fault, i.e. not in memory, so check for capacity, evict head if needed (least recently used), add page to tail (most recently used)
+        self._faults += 1
+        if len(self._frames) == self.capacity:
+            self._frames.popitem(last=False) #remove head (LRU)
+        
+        self._frames[page] = None #insert page at tail (most recently used)
+        return True
+
 
     def frames(self) -> list[int]:
         """Return pages in LRU order: index 0 = least recently used."""
-        # TODO: implement
-        raise NotImplementedError
+        list_of_pages = []
+        
+        for page in self._frames.keys(): #for each page append to a list
+            list_of_pages.append(page)
+        
+        return list_of_pages
 
 
 # ===========================================================================
