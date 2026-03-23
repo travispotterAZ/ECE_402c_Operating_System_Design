@@ -88,5 +88,23 @@
              30,31,32,33,34,35,36,37,
              0,1,2,3,0,1,2,3],
     "expected": {"FIFO": 40, "LRU": 40, "TwoList": 28}
-  }
+  },
+
+  {
+  "name": "all_hits_after_cold_start",
+  "category": "Travis - normal",
+  "description": "Working set of 3 pages fits within capacity of 4; after the initial cold faults every subsequent reference is a hit for all algorithms.",
+  "capacity": 4,
+  "refs": [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2],
+  "expected": {"FIFO": 3, "LRU": 3, "TwoList": 3}
+ },
+
+ {
+  "name": "single_frame",
+  "category": "extreme",
+  "description": "Only one frame available; every reference to a new page evicts the single page. All algorithms should behave identically and fault on every unique page transition.",
+  "capacity": 1,
+  "refs": [0, 1, 0, 1, 0, 2, 0, 2],
+  "expected": {"FIFO": 8, "LRU": 8, "TwoList": 8}
+ }
 ]
