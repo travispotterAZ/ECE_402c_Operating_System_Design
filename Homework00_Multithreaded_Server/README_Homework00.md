@@ -1,188 +1,58 @@
-# Homework: Multithreaded Server with a Thread Pool
+# Multithreaded TCP Server with Thread Pool
 
-## Learning Goals
+**ECE 402C Operating Systems — University of Arizona**
+**Author:** T. Potter
 
-* Understand why “one thread per request” doesn’t scale
-* Implement a thread pool that serves many requests concurrently
-* Implement work queue with resilient designs (e.g., avoid unlimited memory growth)
-* Measure throughput/latency under different workloads and pool sizes
+---
 
-## Development Environment
+## Overview
 
-* Python 3
+Built a concurrent TCP server in Python capable of handling many simultaneous clients using a fixed thread pool. The server accepts text-based requests over TCP, processes them concurrently across worker threads, and responds with results or graceful error messages under load.
 
-## The Task
+Supported operations:
+- `SLEEP ms` — sleeps for the given number of milliseconds, returns `OK ms`
+- `ECHO text` — echoes the argument back, returns `OK text`
 
-You are building a multi-threaded server that handles a large volume of requests from clients.
-The server communicates with clients through **TCP Sockets**.
-The TCP server that handles many short requests from many clients. Each request is a single line:
-```
-OP ARG\n
-```
-Where:
-OP is one of: SLEEP and ECHO
-ARG is an integer for SLEEP or a string for ECHO
+---
 
-Server responds with one line:
-```
-OK RESULT\n
-```
-Or an error
-```
-ERR message\n
-```
+## Architecture
 
-For example:
-* `SLEEP 50`  ==> sleep 50 ms ==> `OK 50`
-* `ECHO hello` ==> `OK hello`
+### Thread Pool
+A fixed number of worker threads (`--workers`) are spawned at startup and kept alive for the lifetime of the server. Each worker blocks on a shared task queue, picks up a request, processes it, and sends the response back to the client. This avoids the overhead of spawning a new thread per request, which does not scale under high concurrency.
 
-## The Starter Code
+### Bounded Task Queue
+Incoming requests are enqueued into a `queue.Queue` with a configurable maximum size (`--queue`, default 1000). This bounds memory usage and prevents the server from being overwhelmed by a flood of slow requests.
 
-* `server.py`: The server implementation for the student to complete.
-* `client.py`: The client sending requests to the server. It is a complete implementation but the student may choose to modify it for better testing.
+### Backpressure
+When the queue is full, the accept loop attempts to enqueue with a 1-second timeout. If the queue remains full, the server responds immediately with `ERR server busy` and drops the request — protecting the server from unbounded request buildup.
 
-## Requirements
+### Concurrency Safety
+Multiple worker threads can write to the same client socket if requests are pipelined. A per-connection lock map (`_conn_locks`) ensures only one thread writes to a given socket at a time, preventing interleaved or corrupted responses. The lock map itself is protected by the global stats lock to prevent races during lock creation.
 
-The homework assignment expects you to submit your **source code (server.py)**, and a **writeup** describing your implementation and testing, and how you satisfied the requirements below.
+### Non-blocking Accept Loop
+The accept loop runs in a dedicated thread and uses non-blocking sockets (`setblocking(False)`) with per-client receive buffers. This allows a single thread to multiplex reads across all connected clients without blocking on any one of them, while worker threads independently handle the actual request processing.
 
-Requirements (graded)
-* Use a **thread pool** (fixed number of worker threads). --- 50%
-* Have a **bounded queue** for pending requests (max 1000 items). --10%
-* Implement **backpressure**: when the queue is full, block until space is available or time out after 1 seconds and reject with `ERR server busy`. --10%
-* Properly handle concurrency: handle multiple clients simultanously; close sockets cleanly on the leave of clients. -- 10%
-* Testing your code thoroughly; describe you test cases in the writeup. -- 20%
-* (Bonus) Additioanl robustness improvements and logging or debugging support. Describe all your bonus effort in the writeup.
+---
 
-## How to Run
+## Testing
 
-Start the server
-```bash
-python server.py --host 127.0.0.1 --port 9000 --workers 8 --queue 500
-```
+All tests run with the server configured at `--workers 8 --queue 500`.
 
-Run the client
-```bash
-python3 client.py --host 127.0.0.1 --port 9000 --clients 5 --requests 200 --mix balanced
-```
+| Test | Clients | Requests | In-flight | Sent | Received | OK | ERR | RPS |
+|------|---------|----------|-----------|------|----------|----|-----|-----|
+| Basic single request | 1 | 1 | 1 | 1 | 1 | 1 | 0 | 2.97 |
+| Single client pipelined | 1 | 100 | 10 | 100 | 100 | 100 | 0 | 11.81 |
+| Multi-client moderate load | 10 | 50 | 10 | 500 | 500 | 500 | 0 | 29.91 |
+| High stress (queue saturation) | 50 | 200 | 10 | 650 | 150 | 150 | 0 | 13.95 |
 
-Enable concurrent requests by adding `--max-inflight 10` large than 1.
+The high-stress test intentionally saturates the queue — the server correctly applies backpressure, rejects excess requests with `ERR server busy`, and continues serving accepted requests without crashing or stalling.
 
+---
 
-## API Hints
+## What I Learned
 
-Basic Python learning materials: [W3Schools](https://www.w3schools.com/python/python_intro.asp)
-
-### 1) Networking (`socket`)
-
-References: [Library API Doc](https://docs.python.org/3/library/socket.html), [Tutorial](https://docs.python.org/3/howto/sockets.html).
-
-* `socket.socket(AF_INET, SOCK_STREAM)`
-  Create a TCP socket.
-
-* `sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)`
-  Allow fast server restart.
-
-* `sock.bind((host, port))`
-  Bind server to address.
-
-* `sock.listen()`
-  Start listening for connections.
-
-* `sock.accept()`
-  Accept a client connection.
-
-* `sock.settimeout(seconds)`
-  Set timeout for blocking socket calls.
-
-* `conn.recv(bufsize)`
-  Read bytes from client.
-
-* `conn.sendall(data)`
-  Send all bytes to client.
-
-* `sock.close()` / `conn.close()`
-  Close socket cleanly.
-
-### 2) Work Queue (`queue`)
-
-References: [Library API Doc](https://docs.python.org/3/library/queue.html)
-
-* `queue.Queue(maxsize)`
-  Bounded task queue.
-
-* `Queue.put(item)`
-  Enqueue task (blocking backpressure).
-
-* `Queue.put_nowait(item)`
-  Enqueue task (reject when full).
-
-* `Queue.get()`
-  Dequeue task (worker threads).
-
-* `Queue.task_done()`
-  Mark task completion.
-
-* `queue.Full`
-  Exception when queue is full.
-
-### 3) Threading (`threading`)
-
-References: [Library API Doc](https://docs.python.org/3/library/threading.html)
-
-* `threading.Thread(target=..., daemon=True)`
-  Create threads (accept loop, client readers, workers).
-
-* `Thread.start()`
-  Start thread execution.
-
-* `Thread.join(timeout)`
-  Wait for thread termination.
-
-* `threading.Lock()`
-  Protect shared data and serialize socket writes.
-
-* `threading.Event()`
-  Signal threads to stop.
-
-Learn from the minimal example:
-
-```python
-import threading
-import time
-
-# Shared resource
-counter = 0
-# Create a lock object
-lock = threading.Lock()
-
-def increment_counter():
-    """
-    Function for threads to increment the counter safely using a lock.
-    """
-    global counter
-    for _ in range(100000):
-        # Acquire the lock before accessing the shared resource (counter)
-        with lock:
-            # Critical section: only one thread can execute this at a time
-            counter += 1
-        # The lock is automatically released when exiting the 'with' block
-
-def main():
-    # Create two threads
-    t1 = threading.Thread(target=increment_counter)
-    t2 = threading.Thread(target=increment_counter)
-
-    # Start both threads
-    t1.start()
-    t2.start()
-
-    # Wait for both threads to complete
-    t1.join()
-    t2.join()
-
-    print(f"Expected counter value: 200000")
-    print(f"Actual counter value:   {counter}")
-
-if __name__ == "__main__":
-    main()
-```
+- How thread pools improve scalability over one-thread-per-request by amortizing thread creation cost and capping resource usage.
+- How bounded queues and backpressure prevent a server from being overwhelmed, and why both are necessary together.
+- How to safely share resources (sockets, counters) across threads using locks, and how to scope locking to minimize contention.
+- How non-blocking I/O and per-client buffers allow a single thread to multiplex many concurrent connections.
+- How to design for graceful shutdown: daemon threads, sentinel values to unblock workers, and socket cleanup on exit.
