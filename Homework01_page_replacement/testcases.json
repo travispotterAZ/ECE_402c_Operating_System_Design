@@ -101,7 +101,7 @@
 
  {
   "name": "single_frame",
-  "category": "extreme",
+  "category": "Travis - extreme",
   "description": "Only one frame available; every reference to a new page evicts the single page. All algorithms should behave identically and fault on every unique page transition.",
   "capacity": 1,
   "refs": [0, 1, 0, 1, 0, 2, 0, 2],
